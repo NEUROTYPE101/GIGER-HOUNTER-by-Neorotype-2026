@@ -1,0 +1,113 @@
+desc:GIGER HOUNTER (by NEUROTYPE)
+slider1:0<0,127,1>Wavetable A
+slider2:32<0,127,1>Wavetable B
+slider3:0<0,1,0.01>Base Morph
+slider4:1<0.1,50,0.1>Preamp Drive
+slider5:12<1,16,0.1>Bit Depth
+slider6:1<1,100,1>Sample Rate Crush
+slider7:15000<200,20000,1>LP Filter
+slider8:1<0,1,0.01>Dry/Wet
+slider9:0<-1,1,0.01>DC Offset
+slider10:0<0,10,0.1>LFO Speed (Hz)
+slider11:0<0,1,0.01>LFO Amount
+slider12:0<0,1,0.01>Env Follower Amount
+
+@init
+function saturate(x) ( x / (1 + abs(x)); );
+function quantize12(x) ( floor(x * 2048) / 2048; );
+function bitcrush(x, levels) ( floor(x * levels) / levels; );
+
+function wavetable_process(x, table_id)
+local(group, index, f, xi)
+(
+  group = floor(table_id / 16);
+  index = (table_id % 16) + 1;
+  group == 0 ? ( f = index * 0.5; x = max(-1, min(1, x * f)); ) :
+  group == 1 ? ( x = abs(x); x *= (index / 16); ) :
+  group == 2 ? ( f = index; x = sin(x * f * $pi); ) :
+  group == 3 ? ( f = index * 0.5 + 1; x = abs((x * f) % 2 - 1) * 2 - 1; ) :
+  group == 4 ? ( f = index * 5; x = x * sin(x * f * $pi); ) :
+  group == 5 ? ( f = index; x = cos(f * acos(max(-1, min(1, x)))); ) :
+  group == 6 ? ( f = index * 0.5; x = (x >= 0 ? 1 : -1) * (1 - exp(-abs(x) * f)); ) :
+  ( xi = floor((x + 1) * 128); xi = abs((xi * index) % 256); x = (xi / 128) - 1; );
+  x;
+);
+
+lfo_phase = 0;
+env_level = 0;
+lp = 0;
+sr_counter = 0;
+held_sample = 0;
+
+@slider
+bit_levels = pow(2, slider5);
+lp_coeff = exp(-2 * $pi * slider7 / srate);
+lfo_inc = (2 * $pi * slider10) / srate;
+env_attack = exp(-1 / (srate * 0.01)); // 10ms
+env_release = exp(-1 / (srate * 0.1)); // 100ms
+
+@sample
+s_in = spl0;
+
+// --- Envelope Follower ---
+abs_in = abs(s_in);
+abs_in > env_level ? (
+  env_level = env_level * env_attack + abs_in * (1 - env_attack);
+) : (
+  env_level = env_level * env_release + abs_in * (1 - env_release);
+);
+
+// --- LFO ---
+lfo_phase += lfo_inc;
+lfo_phase > 2*$pi ? lfo_phase -= 2*$pi;
+lfo_val = (sin(lfo_phase) + 1) * 0.5;
+
+// --- Combined Morphing ---
+current_morph = slider3 + (lfo_val * slider11) + (env_level * slider12);
+current_morph = max(0, min(1, current_morph));
+
+// --- Processing Chain ---
+s_in *= slider4;
+s_in = saturate(s_in);
+s_in += slider9; 
+s_in = quantize12(s_in);
+
+sr_counter += 1;
+sr_counter >= slider6 ? ( held_sample = s_in; sr_counter = 0; );
+s_in = held_sample;
+s_in = bitcrush(s_in, bit_levels);
+
+wt_a = wavetable_process(s_in, slider1);
+wt_b = wavetable_process(s_in, slider2);
+out = wt_a * (1 - current_morph) + wt_b * current_morph;
+
+lp = lp_coeff * lp + (1 - lp_coeff) * out;
+out = lp;
+
+spl0 = spl0 * (1 - slider8) + out * slider8;
+spl1 = spl0;
+
+@gfx 400 350
+gfx_r=0.05; gfx_g=0.05; gfx_b=0.1; gfx_rect(0,0,gfx_w,gfx_h);
+gfx_r=0.3; gfx_g=0.3; gfx_b=0.4; gfx_line(gfx_w/2, 0, gfx_w/2, gfx_h);
+gfx_line(0, gfx_h/2, gfx_w, gfx_h/2);
+
+// Отрисовка динамического графика
+gfx_r=0.1; gfx_g=0.8; gfx_b=1.0; 
+x_plot = 0;
+while(x_plot < gfx_w) (
+  test_x = (x_plot / gfx_w) * 2 - 1;
+  ta = wavetable_process(test_x, slider1);
+  tb = wavetable_process(test_x, slider2);
+  test_y = ta * (1 - current_morph) + tb * current_morph;
+  y_plot = (1 - (test_y + 1) * 0.5) * gfx_h;
+  x_plot == 0 ? gfx_x=x_plot : gfx_line(last_x, last_y, x_plot, y_plot);
+  last_x = x_plot; last_y = y_plot;
+  x_plot += 2;
+);
+
+// Индикатор текущего морфинга
+gfx_x=10; gfx_y=gfx_h-20;
+gfx_drawstr("Morph: "); gfx_drawnumber(current_morph, 2);
+gfx_rect(70, gfx_h-18, current_morph * 100, 10);
+
