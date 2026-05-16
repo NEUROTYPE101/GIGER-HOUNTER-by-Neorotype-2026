@@ -1,4 +1,4 @@
-DOOM INSTRUMENT JSFX 2026 (by NEUROTYPE)
+GIGER HAUNTER (by NEUROTYPE)
 
 Спасибо, что скачали данный плагин!
 
