@@ -1,4 +1,4 @@
-desc:GIGER HOUNTER (by NEUROTYPE)
+desc:GIGER HAUNTER (by NEUROTYPE)
 slider1:0<0,127,1>Wavetable A
 slider2:32<0,127,1>Wavetable B
 slider3:0<0,1,0.01>Base Morph
